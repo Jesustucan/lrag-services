@@ -1,5 +1,4 @@
 services:
-
   lightrag-ws1:
     container_name: lightrag-ws1
     build:
@@ -16,7 +15,7 @@ services:
     env_file:
       - .env
     environment:
-      - QDRANT_WORKSPACE=ws1
+      - WORKSPACE=ws1
       - PORT=9621
     restart: unless-stopped
     extra_hosts:
@@ -40,7 +39,7 @@ services:
     env_file:
       - .env
     environment:
-      - QDRANT_WORKSPACE=unireformada
+      - WORKSPACE=unireformada
       - PORT=9621
     restart: unless-stopped
     extra_hosts:
@@ -64,7 +63,31 @@ services:
     env_file:
       - .env
     environment:
-      - QDRANT_WORKSPACE=museo
+      - WORKSPACE=museo
+      - PORT=9621
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - dokploy-network
+
+  lightrag-barq-art:
+    container_name: lightrag-barq-art
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: lightrag-local:latest
+    ports:
+      - "9624:9621"
+    volumes:
+      - lightrag_barq_art_storage:/app/data/rag_storage
+      - lightrag_barq_art_inputs:/app/data/inputs
+      - ./config.ini:/app/config.ini
+      - ./.env:/app/.env
+    env_file:
+      - .env
+    environment:
+      - WORKSPACE=barq-art
       - PORT=9621
     restart: unless-stopped
     extra_hosts:
@@ -74,10 +97,9 @@ services:
 
 networks:
   dokploy-network:
-    external: true
+    driver: bridge
 
 volumes:
-
   lightrag_ws1_storage:
     driver: local
   lightrag_ws1_inputs:
@@ -91,4 +113,9 @@ volumes:
   lightrag_museo_storage:
     driver: local
   lightrag_museo_inputs:
+    driver: local
+
+  lightrag_barq_art_storage:
+    driver: local
+  lightrag_barq_art_inputs:
     driver: local
