@@ -1,21 +1,94 @@
 services:
-  lightrag:
-    container_name: lightrag
-    image: ghcr.io/hkuds/lightrag:latest
+
+  lightrag-ws1:
+    container_name: lightrag-ws1
     build:
       context: .
       dockerfile: Dockerfile
-      tags:
-        - ghcr.io/hkuds/lightrag:latest
+    image: lightrag-local:latest
     ports:
-      - "${PORT:-9621}:9621"
+      - "9621:9621"
     volumes:
-      - ./data/rag_storage:/app/data/rag_storage
-      - ./data/inputs:/app/data/inputs
+      - lightrag_ws1_storage:/app/data/rag_storage
+      - lightrag_ws1_inputs:/app/data/inputs
       - ./config.ini:/app/config.ini
       - ./.env:/app/.env
     env_file:
       - .env
+    environment:
+      - QDRANT_WORKSPACE=ws1
+      - PORT=9621
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    networks:
+      - dokploy-network
+
+  lightrag-unireformada:
+    container_name: lightrag-unireformada
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: lightrag-local:latest
+    ports:
+      - "9622:9621"
+    volumes:
+      - lightrag_unireformada_storage:/app/data/rag_storage
+      - lightrag_unireformada_inputs:/app/data/inputs
+      - ./config.ini:/app/config.ini
+      - ./.env:/app/.env
+    env_file:
+      - .env
+    environment:
+      - QDRANT_WORKSPACE=unireformada
+      - PORT=9621
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - dokploy-network
+
+  lightrag-museo:
+    container_name: lightrag-museo
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: lightrag-local:latest
+    ports:
+      - "9623:9621"
+    volumes:
+      - lightrag_museo_storage:/app/data/rag_storage
+      - lightrag_museo_inputs:/app/data/inputs
+      - ./config.ini:/app/config.ini
+      - ./.env:/app/.env
+    env_file:
+      - .env
+    environment:
+      - QDRANT_WORKSPACE=museo
+      - PORT=9621
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - dokploy-network
+
+networks:
+  dokploy-network:
+    external: true
+
+volumes:
+
+  lightrag_ws1_storage:
+    driver: local
+  lightrag_ws1_inputs:
+    driver: local
+
+  lightrag_unireformada_storage:
+    driver: local
+  lightrag_unireformada_inputs:
+    driver: local
+  
+  lightrag_museo_storage:
+    driver: local
+  lightrag_museo_inputs:
+    driver: local
