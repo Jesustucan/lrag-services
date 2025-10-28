@@ -5,8 +5,6 @@ services:
       context: .
       dockerfile: Dockerfile
     image: lightrag-local:latest
-    ports:
-      - "9621:9621"
     volumes:
       - lightrag_ws1_storage:/app/data/rag_storage
       - lightrag_ws1_inputs:/app/data/inputs
@@ -29,8 +27,6 @@ services:
       context: .
       dockerfile: Dockerfile
     image: lightrag-local:latest
-    ports:
-      - "9622:9621"
     volumes:
       - lightrag_unireformada_storage:/app/data/rag_storage
       - lightrag_unireformada_inputs:/app/data/inputs
@@ -53,8 +49,6 @@ services:
       context: .
       dockerfile: Dockerfile
     image: lightrag-local:latest
-    ports:
-      - "9623:9621"
     volumes:
       - lightrag_museo_storage:/app/data/rag_storage
       - lightrag_museo_inputs:/app/data/inputs
@@ -77,8 +71,6 @@ services:
       context: .
       dockerfile: Dockerfile
     image: lightrag-local:latest
-    ports:
-      - "9624:9621"
     volumes:
       - lightrag_barq_art_storage:/app/data/rag_storage
       - lightrag_barq_art_inputs:/app/data/inputs
@@ -97,7 +89,7 @@ services:
 
 networks:
   dokploy-network:
-    driver: bridge
+    driver: true
 
 volumes:
   lightrag_ws1_storage:
