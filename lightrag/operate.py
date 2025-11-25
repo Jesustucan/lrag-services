@@ -8,7 +8,10 @@ import json_repair
 from typing import Any, AsyncIterator, overload, Literal
 from collections import Counter, defaultdict
 
-from lightrag.exceptions import PipelineCancelledException
+from lightrag.exceptions import (
+    PipelineCancelledException,
+    ChunkTokenLimitExceededError,
+)
 from lightrag.utils import (
     logger,
     compute_mdhash_id,
@@ -98,8 +101,8 @@ def chunking_by_token_size(
     content: str,
     split_by_character: str | None = None,
     split_by_character_only: bool = False,
-    overlap_token_size: int = 128,
-    max_token_size: int = 1024,
+    chunk_overlap_token_size: int = 100,
+    chunk_token_size: int = 1200,
 ) -> list[dict[str, Any]]:
     tokens = tokenizer.encode(content)
     results: list[dict[str, Any]] = []
@@ -109,19 +112,30 @@ def chunking_by_token_size(
         if split_by_character_only:
             for chunk in raw_chunks:
                 _tokens = tokenizer.encode(chunk)
+                if len(_tokens) > chunk_token_size:
+                    logger.warning(
+                        "Chunk split_by_character exceeds token limit: len=%d limit=%d",
+                        len(_tokens),
+                        chunk_token_size,
+                    )
+                    raise ChunkTokenLimitExceededError(
+                        chunk_tokens=len(_tokens),
+                        chunk_token_limit=chunk_token_size,
+                        chunk_preview=chunk[:120],
+                    )
                 new_chunks.append((len(_tokens), chunk))
         else:
             for chunk in raw_chunks:
                 _tokens = tokenizer.encode(chunk)
-                if len(_tokens) > max_token_size:
+                if len(_tokens) > chunk_token_size:
                     for start in range(
-                        0, len(_tokens), max_token_size - overlap_token_size
+                        0, len(_tokens), chunk_token_size - chunk_overlap_token_size
                     ):
                         chunk_content = tokenizer.decode(
-                            _tokens[start : start + max_token_size]
+                            _tokens[start : start + chunk_token_size]
                         )
                         new_chunks.append(
-                            (min(max_token_size, len(_tokens) - start), chunk_content)
+                            (min(chunk_token_size, len(_tokens) - start), chunk_content)
                         )
                 else:
                     new_chunks.append((len(_tokens), chunk))
@@ -135,12 +149,12 @@ def chunking_by_token_size(
             )
     else:
         for index, start in enumerate(
-            range(0, len(tokens), max_token_size - overlap_token_size)
+            range(0, len(tokens), chunk_token_size - chunk_overlap_token_size)
         ):
-            chunk_content = tokenizer.decode(tokens[start : start + max_token_size])
+            chunk_content = tokenizer.decode(tokens[start : start + chunk_token_size])
             results.append(
                 {
-                    "tokens": min(max_token_size, len(tokens) - start),
+                    "tokens": min(chunk_token_size, len(tokens) - start),
                     "content": chunk_content.strip(),
                     "chunk_order_index": index,
                 }
@@ -345,6 +359,20 @@ async def _summarize_descriptions(
         llm_response_cache=llm_response_cache,
         cache_type="summary",
     )
+
+    # Check summary token length against embedding limit
+    embedding_token_limit = global_config.get("embedding_token_limit")
+    if embedding_token_limit is not None and summary:
+        tokenizer = global_config["tokenizer"]
+        summary_token_count = len(tokenizer.encode(summary))
+        threshold = int(embedding_token_limit * 0.9)
+
+        if summary_token_count > threshold:
+            logger.warning(
+                f"Summary tokens ({summary_token_count}) exceeds 90% of embedding limit "
+                f"({embedding_token_limit}) for {description_type}: {description_name}"
+            )
+
     return summary
 
 
@@ -677,14 +705,6 @@ async def rebuild_knowledge_from_chunks(
                         entity_chunks_storage=entity_chunks_storage,
                     )
                     rebuilt_entities_count += 1
-                    status_message = (
-                        f"Rebuild `{entity_name}` from {len(chunk_ids)} chunks"
-                    )
-                    logger.info(status_message)
-                    if pipeline_status is not None and pipeline_status_lock is not None:
-                        async with pipeline_status_lock:
-                            pipeline_status["latest_message"] = status_message
-                            pipeline_status["history_messages"].append(status_message)
                 except Exception as e:
                     failed_entities_count += 1
                     status_message = f"Failed to rebuild `{entity_name}`: {e}"
@@ -1432,10 +1452,6 @@ async def _rebuild_single_relationship(
     else:
         truncation_info = ""
 
-    # Sort src and tgt to ensure consistent ordering (smaller string first)
-    if src > tgt:
-        src, tgt = tgt, src
-
     # Update relationship in graph storage
     updated_relationship_data = {
         **current_relationship,
@@ -1510,6 +1526,9 @@ async def _rebuild_single_relationship(
     await knowledge_graph_inst.upsert_edge(src, tgt, updated_relationship_data)
 
     # Update relationship in vector database
+    # Sort src and tgt to ensure consistent ordering (smaller string first)
+    if src > tgt:
+        src, tgt = tgt, src
     try:
         rel_vdb_id = compute_mdhash_id(src + tgt, prefix="rel-")
         rel_vdb_id_reverse = compute_mdhash_id(tgt + src, prefix="rel-")
@@ -2145,13 +2164,13 @@ async def _merge_edges_then_upsert(
     else:
         logger.debug(status_message)
 
-    # Sort src_id and tgt_id to ensure consistent ordering (smaller string first)
-    if src_id > tgt_id:
-        src_id, tgt_id = tgt_id, src_id
-
     # 11. Update both graph and vector db
     for need_insert_id in [src_id, tgt_id]:
-        if not (await knowledge_graph_inst.has_node(need_insert_id)):
+        # Optimization: Use get_node instead of has_node + get_node
+        existing_node = await knowledge_graph_inst.get_node(need_insert_id)
+
+        if existing_node is None:
+            # Node doesn't exist - create new node
             node_created_at = int(time.time())
             node_data = {
                 "entity_id": need_insert_id,
@@ -2208,6 +2227,109 @@ async def _merge_edges_then_upsert(
                     "created_at": node_created_at,
                 }
                 added_entities.append(entity_data)
+        else:
+            # Node exists - update its source_ids by merging with new source_ids
+            updated = False  # Track if any update occurred
+
+            # 1. Get existing full source_ids from entity_chunks_storage
+            existing_full_source_ids = []
+            if entity_chunks_storage is not None:
+                stored_chunks = await entity_chunks_storage.get_by_id(need_insert_id)
+                if stored_chunks and isinstance(stored_chunks, dict):
+                    existing_full_source_ids = [
+                        chunk_id
+                        for chunk_id in stored_chunks.get("chunk_ids", [])
+                        if chunk_id
+                    ]
+
+            # If not in entity_chunks_storage, get from graph database
+            if not existing_full_source_ids:
+                if existing_node.get("source_id"):
+                    existing_full_source_ids = existing_node["source_id"].split(
+                        GRAPH_FIELD_SEP
+                    )
+
+            # 2. Merge with new source_ids from this relationship
+            new_source_ids_from_relation = [
+                chunk_id for chunk_id in source_ids if chunk_id
+            ]
+            merged_full_source_ids = merge_source_ids(
+                existing_full_source_ids, new_source_ids_from_relation
+            )
+
+            # 3. Save merged full list to entity_chunks_storage (conditional)
+            if (
+                entity_chunks_storage is not None
+                and merged_full_source_ids != existing_full_source_ids
+            ):
+                updated = True
+                await entity_chunks_storage.upsert(
+                    {
+                        need_insert_id: {
+                            "chunk_ids": merged_full_source_ids,
+                            "count": len(merged_full_source_ids),
+                        }
+                    }
+                )
+
+            # 4. Apply source_ids limit for graph and vector db
+            limit_method = global_config.get(
+                "source_ids_limit_method", SOURCE_IDS_LIMIT_METHOD_KEEP
+            )
+            max_source_limit = global_config.get("max_source_ids_per_entity")
+            limited_source_ids = apply_source_ids_limit(
+                merged_full_source_ids,
+                max_source_limit,
+                limit_method,
+                identifier=f"`{need_insert_id}`",
+            )
+
+            # 5. Update graph database and vector database with limited source_ids (conditional)
+            limited_source_id_str = GRAPH_FIELD_SEP.join(limited_source_ids)
+
+            if limited_source_id_str != existing_node.get("source_id", ""):
+                updated = True
+                updated_node_data = {
+                    **existing_node,
+                    "source_id": limited_source_id_str,
+                }
+                await knowledge_graph_inst.upsert_node(
+                    need_insert_id, node_data=updated_node_data
+                )
+
+                # Update vector database
+                if entity_vdb is not None:
+                    entity_vdb_id = compute_mdhash_id(need_insert_id, prefix="ent-")
+                    entity_content = (
+                        f"{need_insert_id}\n{existing_node.get('description', '')}"
+                    )
+                    vdb_data = {
+                        entity_vdb_id: {
+                            "content": entity_content,
+                            "entity_name": need_insert_id,
+                            "source_id": limited_source_id_str,
+                            "entity_type": existing_node.get("entity_type", "UNKNOWN"),
+                            "file_path": existing_node.get(
+                                "file_path", "unknown_source"
+                            ),
+                        }
+                    }
+                    await safe_vdb_operation_with_exception(
+                        operation=lambda payload=vdb_data: entity_vdb.upsert(payload),
+                        operation_name="existing_entity_update",
+                        entity_name=need_insert_id,
+                        max_retries=3,
+                        retry_delay=0.1,
+                    )
+
+            # 6. Log once at the end if any update occurred
+            if updated:
+                status_message = f"Chunks appended from relation: `{need_insert_id}`"
+                logger.info(status_message)
+                if pipeline_status is not None and pipeline_status_lock is not None:
+                    async with pipeline_status_lock:
+                        pipeline_status["latest_message"] = status_message
+                        pipeline_status["history_messages"].append(status_message)
 
     edge_created_at = int(time.time())
     await knowledge_graph_inst.upsert_edge(
@@ -2235,6 +2357,10 @@ async def _merge_edges_then_upsert(
         truncate=truncation_info,
         weight=weight,
     )
+
+    # Sort src_id and tgt_id to ensure consistent ordering (smaller string first)
+    if src_id > tgt_id:
+        src_id, tgt_id = tgt_id, src_id
 
     if relationships_vdb is not None:
         rel_vdb_id = compute_mdhash_id(src_id + tgt_id, prefix="rel-")
@@ -3327,10 +3453,10 @@ async def _perform_kg_search(
     )
     query_embedding = None
     if query and (kg_chunk_pick_method == "VECTOR" or chunks_vdb):
-        embedding_func_config = text_chunks_db.embedding_func
-        if embedding_func_config and embedding_func_config.func:
+        actual_embedding_func = text_chunks_db.embedding_func
+        if actual_embedding_func:
             try:
-                query_embedding = await embedding_func_config.func([query])
+                query_embedding = await actual_embedding_func([query])
                 query_embedding = query_embedding[
                     0
                 ]  # Extract first embedding from batch result
@@ -3734,7 +3860,7 @@ async def _merge_all_chunks(
     return merged_chunks
 
 
-async def _build_llm_context(
+async def _build_context_str(
     entities_context: list[dict],
     relations_context: list[dict],
     merged_chunks: list[dict],
@@ -3834,23 +3960,32 @@ async def _build_llm_context(
         truncated_chunks
     )
 
-    # Rebuild text_units_context with truncated chunks
+    # Rebuild chunks_context with truncated chunks
     # The actual tokens may be slightly less than available_chunk_tokens due to deduplication logic
-    text_units_context = []
+    chunks_context = []
     for i, chunk in enumerate(truncated_chunks):
-        text_units_context.append(
+        chunks_context.append(
             {
                 "reference_id": chunk["reference_id"],
                 "content": chunk["content"],
             }
         )
 
+    text_units_str = "\n".join(
+        json.dumps(text_unit, ensure_ascii=False) for text_unit in chunks_context
+    )
+    reference_list_str = "\n".join(
+        f"[{ref['reference_id']}] {ref['file_path']}"
+        for ref in reference_list
+        if ref["reference_id"]
+    )
+
     logger.info(
-        f"Final context: {len(entities_context)} entities, {len(relations_context)} relations, {len(text_units_context)} chunks"
+        f"Final context: {len(entities_context)} entities, {len(relations_context)} relations, {len(chunks_context)} chunks"
     )
 
     # not necessary to use LLM to generate a response
-    if not entities_context and not relations_context:
+    if not entities_context and not relations_context and not chunks_context:
         # Return empty raw data structure when no entities/relations
         empty_raw_data = convert_to_user_format(
             [],
@@ -3881,15 +4016,6 @@ async def _build_llm_context(
         if chunk_tracking_log:
             logger.info(f"Final chunks S+F/O: {' '.join(chunk_tracking_log)}")
 
-    text_units_str = "\n".join(
-        json.dumps(text_unit, ensure_ascii=False) for text_unit in text_units_context
-    )
-    reference_list_str = "\n".join(
-        f"[{ref['reference_id']}] {ref['file_path']}"
-        for ref in reference_list
-        if ref["reference_id"]
-    )
-
     result = kg_context_template.format(
         entities_str=entities_str,
         relations_str=relations_str,
@@ -3899,7 +4025,7 @@ async def _build_llm_context(
 
     # Always return both context and complete data structure (unified approach)
     logger.debug(
-        f"[_build_llm_context] Converting to user format: {len(entities_context)} entities, {len(relations_context)} relations, {len(truncated_chunks)} chunks"
+        f"[_build_context_str] Converting to user format: {len(entities_context)} entities, {len(relations_context)} relations, {len(truncated_chunks)} chunks"
     )
     final_data = convert_to_user_format(
         entities_context,
@@ -3911,7 +4037,7 @@ async def _build_llm_context(
         relation_id_to_original,
     )
     logger.debug(
-        f"[_build_llm_context] Final data after conversion: {len(final_data.get('entities', []))} entities, {len(final_data.get('relationships', []))} relationships, {len(final_data.get('chunks', []))} chunks"
+        f"[_build_context_str] Final data after conversion: {len(final_data.get('entities', []))} entities, {len(final_data.get('relationships', []))} relationships, {len(final_data.get('chunks', []))} chunks"
     )
     return result, final_data
 
@@ -3988,8 +4114,8 @@ async def _build_query_context(
         return None
 
     # Stage 4: Build final LLM context with dynamic token processing
-    # _build_llm_context now always returns tuple[str, dict]
-    context, raw_data = await _build_llm_context(
+    # _build_context_str now always returns tuple[str, dict]
+    context, raw_data = await _build_context_str(
         entities_context=truncation_result["entities_context"],
         relations_context=truncation_result["relations_context"],
         merged_chunks=merged_chunks,
@@ -4238,25 +4364,21 @@ async def _find_related_text_unit_from_entities(
         num_of_chunks = int(max_related_chunks * len(entities_with_chunks) / 2)
 
         # Get embedding function from global config
-        embedding_func_config = text_chunks_db.embedding_func
-        if not embedding_func_config:
+        actual_embedding_func = text_chunks_db.embedding_func
+        if not actual_embedding_func:
             logger.warning("No embedding function found, falling back to WEIGHT method")
             kg_chunk_pick_method = "WEIGHT"
         else:
             try:
-                actual_embedding_func = embedding_func_config.func
-
-                selected_chunk_ids = None
-                if actual_embedding_func:
-                    selected_chunk_ids = await pick_by_vector_similarity(
-                        query=query,
-                        text_chunks_storage=text_chunks_db,
-                        chunks_vdb=chunks_vdb,
-                        num_of_chunks=num_of_chunks,
-                        entity_info=entities_with_chunks,
-                        embedding_func=actual_embedding_func,
-                        query_embedding=query_embedding,
-                    )
+                selected_chunk_ids = await pick_by_vector_similarity(
+                    query=query,
+                    text_chunks_storage=text_chunks_db,
+                    chunks_vdb=chunks_vdb,
+                    num_of_chunks=num_of_chunks,
+                    entity_info=entities_with_chunks,
+                    embedding_func=actual_embedding_func,
+                    query_embedding=query_embedding,
+                )
 
                 if selected_chunk_ids == []:
                     kg_chunk_pick_method = "WEIGHT"
@@ -4531,24 +4653,21 @@ async def _find_related_text_unit_from_relations(
         num_of_chunks = int(max_related_chunks * len(relations_with_chunks) / 2)
 
         # Get embedding function from global config
-        embedding_func_config = text_chunks_db.embedding_func
-        if not embedding_func_config:
+        actual_embedding_func = text_chunks_db.embedding_func
+        if not actual_embedding_func:
             logger.warning("No embedding function found, falling back to WEIGHT method")
             kg_chunk_pick_method = "WEIGHT"
         else:
             try:
-                actual_embedding_func = embedding_func_config.func
-
-                if actual_embedding_func:
-                    selected_chunk_ids = await pick_by_vector_similarity(
-                        query=query,
-                        text_chunks_storage=text_chunks_db,
-                        chunks_vdb=chunks_vdb,
-                        num_of_chunks=num_of_chunks,
-                        entity_info=relations_with_chunks,
-                        embedding_func=actual_embedding_func,
-                        query_embedding=query_embedding,
-                    )
+                selected_chunk_ids = await pick_by_vector_similarity(
+                    query=query,
+                    text_chunks_storage=text_chunks_db,
+                    chunks_vdb=chunks_vdb,
+                    num_of_chunks=num_of_chunks,
+                    entity_info=relations_with_chunks,
+                    embedding_func=actual_embedding_func,
+                    query_embedding=query_embedding,
+                )
 
                 if selected_chunk_ids == []:
                     kg_chunk_pick_method = "WEIGHT"
@@ -4762,10 +4881,10 @@ async def naive_query(
         "final_chunks_count": len(processed_chunks_with_ref_ids),
     }
 
-    # Build text_units_context from processed chunks with reference IDs
-    text_units_context = []
+    # Build chunks_context from processed chunks with reference IDs
+    chunks_context = []
     for i, chunk in enumerate(processed_chunks_with_ref_ids):
-        text_units_context.append(
+        chunks_context.append(
             {
                 "reference_id": chunk["reference_id"],
                 "content": chunk["content"],
@@ -4773,7 +4892,7 @@ async def naive_query(
         )
 
     text_units_str = "\n".join(
-        json.dumps(text_unit, ensure_ascii=False) for text_unit in text_units_context
+        json.dumps(text_unit, ensure_ascii=False) for text_unit in chunks_context
     )
     reference_list_str = "\n".join(
         f"[{ref['reference_id']}] {ref['file_path']}"
