@@ -87,6 +87,28 @@ services:
     networks:
       - dokploy-network
 
+lightrag-tucan:
+    container_name: lightrag-tucan
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: lightrag-local:latest
+    volumes:
+      - lightrag_tucan_storage:/app/data/rag_storage
+      - lightrag_tucan_inputs:/app/data/inputs
+      - ./config.ini:/app/config.ini
+      - ./.env:/app/.env
+    env_file:
+      - .env
+    environment:
+      - WORKSPACE=tucan
+      - PORT=9621
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - dokploy-network
+
 networks:
   dokploy-network:
     driver: true
@@ -110,4 +132,9 @@ volumes:
   lightrag_barq_art_storage:
     driver: local
   lightrag_barq_art_inputs:
+    driver: local
+
+  lightrag_tucan_storage:
+    driver: local
+  lightrag_tucan_inputs:
     driver: local
