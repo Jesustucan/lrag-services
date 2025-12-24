@@ -111,7 +111,7 @@ lightrag-tucan:
 
 networks:
   dokploy-network:
-    driver: true
+    external: true
 
 volumes:
   lightrag_ws1_storage:
