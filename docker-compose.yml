@@ -86,8 +86,8 @@ services:
       - "host.docker.internal:host-gateway"
     networks:
       - dokploy-network
-
-lightrag-tucan:
+      
+  lightrag-tucan:
     container_name: lightrag-tucan
     build:
       context: .
