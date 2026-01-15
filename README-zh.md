@@ -51,6 +51,17 @@
 
 ---
 
+<div align="center">
+  <a href="https://litewrite.ai" target="_blank">
+    <img src="./assets/LiteWrite.png" width="56" height="56" alt="LiteWrite" style="vertical-align: middle; border-radius: 12px;">
+    <span style="font-size: 18px; font-weight: bold; margin-left: 10px;">体验 LiteWrite — AI 原生 LaTeX 编辑平台</span>
+  </a>
+  <br>
+  <a href="https://litewrite.ai"><img src="https://img.shields.io/badge/🚀%20LiteWrite-AI%20原生%20LaTeX%20编辑器-ff6b6b?style=for-the-badge&logoColor=white&labelColor=1a1a2e"></a>
+</div>
+
+---
+
 ## 🎉 新闻
 - [2025.11]🎯[新功能]: 集成了 **RAGAS 评估**和 **Langfuse 追踪**。更新了 API 以在查询结果中返回召回上下文，支持上下文精度指标。
 - [2025.10]🎯[可扩展性增强]: 消除了处理瓶颈，以高效支持**大规模数据集**。
@@ -128,9 +139,9 @@ uv sync --extra api
 source .venv/bin/activate  # 激活虚拟环境 (Linux/macOS)
 # Windows 系统: .venv\Scripts\activate
 
-# 或使用 pip 和虚拟环境
+### 或使用 pip 和虚拟环境
 # python -m venv .venv
-# source .venv/bin/activate  # Windows: .venv\Scripts\activate
+### source .venv/bin/activate  # Windows: .venv\Scripts\activate
 # pip install -e ".[api]"
 
 # 构建前端代码
@@ -255,7 +266,8 @@ async def initialize_rag():
         llm_model_func=gpt_4o_mini_complete,
     )
     # IMPORTANT: Both initialization calls are required!
-    await rag.initialize_storages()  # Initialize storage backends    return rag
+    await rag.initialize_storages()  # Initialize storage backends
+    return rag
 
 async def main():
     try:
@@ -379,6 +391,7 @@ class QueryParam:
     Format: [{"role": "user/assistant", "content": "message"}].
     """
 
+    # Deprecated (ids filter lead to potential hallucination effects)
     ids: list[str] | None = None
     """List of ids to filter the results."""
 
@@ -748,6 +761,7 @@ async def embedding_func(texts: list[str]) -> np.ndarray:
 rag = LightRAG(
     working_dir=WORKING_DIR,
     llm_model_func=llm_model_func,
+    llm_model_name="gemini-2.0-flash",
     embedding_func=embedding_func
 )
 ```
@@ -971,7 +985,7 @@ async def initialize_rag():
 
 * PostgreSQL 很轻量，包含所有必要插件的完整二进制发行版可以压缩到 40MB：参考 [Windows Release](https://github.com/ShanGor/apache-age-windows/releases/tag/PG17%2Fv1.5.0-rc0)，Linux/Mac 也很容易安装。
 * 如果您喜欢 docker，建议初学者使用此镜像以避免出现问题（默认用户密码：rag/rag）：https://hub.docker.com/r/gzdaniel/postgres-for-rag
-* 如何开始？参考：[examples/lightrag_zhipu_postgres_demo.py](https://github.com/HKUDS/LightRAG/blob/main/examples/lightrag_zhipu_postgres_demo.py)
+* 如何开始？参考：[examples/lightrag_gemini_postgres_demo.py](https://github.com/HKUDS/LightRAG/blob/main/examples/lightrag_gemini_postgres_demo.py)
 * 对于高性能图数据库需求，推荐使用 Neo4j，因为 Apache AGE 的性能不够理想。
 
 </details>

@@ -769,6 +769,7 @@ class DocumentManager:
         supported_extensions: tuple = (
             ".txt",
             ".md",
+            ".mdx",  # MDX (Markdown + JSX)
             ".pdf",
             ".docx",
             ".pptx",
@@ -1015,10 +1016,10 @@ def _extract_docx(file_bytes: bytes) -> str:
         # CRITICAL: Escape backslash first to avoid double-escaping
         return (
             text.replace("\\", "\\\\")  # Must be first: \ -> \\
-            .replace("\t", "\\t")  # Tab -> \t (visible)
-            .replace("\r\n", "\\n")  # Windows newline -> \n
-            .replace("\r", "\\n")  # Mac newline -> \n
-            .replace("\n", "\\n")  # Unix newline -> \n
+            .replace("\t", "&emsp;&emsp;")  # Tab -> \t (visible)
+            .replace("\r\n", "<br>")  # Windows newline -> \n
+            .replace("\r", "<br>")  # Mac newline -> \n
+            .replace("\n", "<br>")  # Unix newline -> \n
         )
 
     content_parts = []
@@ -1268,6 +1269,7 @@ async def pipeline_enqueue_file(
                 case (
                     ".txt"
                     | ".md"
+                    | ".mdx"
                     | ".html"
                     | ".htm"
                     | ".tex"
