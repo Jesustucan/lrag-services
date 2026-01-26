@@ -109,6 +109,52 @@ services:
     networks:
       - dokploy-network
 
+  # --- NUEVO SERVICIO: evolver-your-english ---
+  lightrag-evolver-your-english:
+    container_name: lightrag-evolver-your-english
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: lightrag-local:latest
+    volumes:
+      - lightrag_evolver_your_english_storage:/app/data/rag_storage
+      - lightrag_evolver_your_english_inputs:/app/data/inputs
+      - ./config.ini:/app/config.ini
+      - ./.env:/app/.env
+    env_file:
+      - .env
+    environment:
+      - WORKSPACE=evolver-your-english
+      - PORT=9621
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - dokploy-network
+
+  # --- NUEVO SERVICIO: iditek ---
+  lightrag-iditek:
+    container_name: lightrag-iditek
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: lightrag-local:latest
+    volumes:
+      - lightrag_iditek_storage:/app/data/rag_storage
+      - lightrag_iditek_inputs:/app/data/inputs
+      - ./config.ini:/app/config.ini
+      - ./.env:/app/.env
+    env_file:
+      - .env
+    environment:
+      - WORKSPACE=iditek
+      - PORT=9621
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - dokploy-network
+
 networks:
   dokploy-network:
     external: true
@@ -137,4 +183,15 @@ volumes:
   lightrag_tucan_storage:
     driver: local
   lightrag_tucan_inputs:
+    driver: local
+
+  # --- NUEVOS VOLUMENES ---
+  lightrag_evolver_your_english_storage:
+    driver: local
+  lightrag_evolver_your_english_inputs:
+    driver: local
+
+  lightrag_iditek_storage:
+    driver: local
+  lightrag_iditek_inputs:
     driver: local
