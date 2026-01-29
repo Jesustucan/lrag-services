@@ -1,196 +1,212 @@
+# Redis y Qdrant son compartidos por todos los contenedores LightRAG.
+# Conexión configurada en .env: REDIS_URI, QDRANT_URL, QDRANT_API_KEY, REDIS_PASSWORD
+
+x-lightrag-default: &lightrag-default
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: lightrag-local:latest
+  env_file:
+    - .env
+  environment:
+    - PORT=9621
+  restart: unless-stopped
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  networks:
+    - dokploy-network
+
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    command: sh -c 'redis-server --requirepass "$$REDIS_PASSWORD"'
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    networks:
+      - dokploy-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    # Opcional: exponer para redis-cli desde el host (redis-cli -h 127.0.0.1 -p 6379 -a '...')
+    ports:
+      - "6379:6379"
+
+  qdrant:
+    image: qdrant/qdrant:v1.15.1
+    container_name: qdrant
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY}
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    networks:
+      - dokploy-network
+    restart: unless-stopped
+    # Opcional: exponer para dashboard (http://localhost:6333/dashboard)
+    ports:
+      - "6333:6333"
+
   lightrag-ws1:
-    container_name: lightrag-ws1
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: lightrag-local:latest
+    <<: *lightrag-default
+    container_name: workspace-staging
+    environment:
+      - WORKSPACE=staging
+      - PORT=9621
+    ports:
+      - "9621:9621"
     volumes:
       - lightrag_ws1_storage:/app/data/rag_storage
       - lightrag_ws1_inputs:/app/data/inputs
       - ./config.ini:/app/config.ini
       - ./.env:/app/.env
-    env_file:
-      - .env
-    environment:
-      - WORKSPACE=ws1
-      - PORT=9621
-    restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      - dokploy-network
+    depends_on:
+      redis: { condition: service_healthy }
+      qdrant: { condition: service_started }
 
   lightrag-unireformada:
-    container_name: lightrag-unireformada
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: lightrag-local:latest
+    <<: *lightrag-default
+    container_name: workspace-unireformada
+    environment:
+      - WORKSPACE=unireformada
+      - PORT=9621
+    ports:
+      - "9622:9621"
     volumes:
       - lightrag_unireformada_storage:/app/data/rag_storage
       - lightrag_unireformada_inputs:/app/data/inputs
       - ./config.ini:/app/config.ini
       - ./.env:/app/.env
-    env_file:
-      - .env
-    environment:
-      - WORKSPACE=unireformada
-      - PORT=9621
-    restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      - dokploy-network
+    depends_on:
+      redis: { condition: service_healthy }
+      qdrant: { condition: service_started }
 
   lightrag-museo:
-    container_name: lightrag-museo
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: lightrag-local:latest
+    <<: *lightrag-default
+    container_name: workspace-museo
+    environment:
+      - WORKSPACE=museo
+      - PORT=9621
+    ports:
+      - "9623:9621"
     volumes:
       - lightrag_museo_storage:/app/data/rag_storage
       - lightrag_museo_inputs:/app/data/inputs
       - ./config.ini:/app/config.ini
       - ./.env:/app/.env
-    env_file:
-      - .env
-    environment:
-      - WORKSPACE=museo
-      - PORT=9621
-    restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      - dokploy-network
+    depends_on:
+      redis: { condition: service_healthy }
+      qdrant: { condition: service_started }
 
   lightrag-barq-art:
-    container_name: lightrag-barq-art
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: lightrag-local:latest
+    <<: *lightrag-default
+    container_name: workspace-barq-art
+    environment:
+      - WORKSPACE=barq-art
+      - PORT=9621
+    ports:
+      - "9624:9621"
     volumes:
       - lightrag_barq_art_storage:/app/data/rag_storage
       - lightrag_barq_art_inputs:/app/data/inputs
       - ./config.ini:/app/config.ini
       - ./.env:/app/.env
-    env_file:
-      - .env
-    environment:
-      - WORKSPACE=barq-art
-      - PORT=9621
-    restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      - dokploy-network
-      
+    depends_on:
+      redis: { condition: service_healthy }
+      qdrant: { condition: service_started }
+
   lightrag-tucan:
-    container_name: lightrag-tucan
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: lightrag-local:latest
+    <<: *lightrag-default
+    container_name: workspace-tucan
+    environment:
+      - WORKSPACE=tucan
+      - PORT=9621
+    ports:
+      - "9625:9621"
     volumes:
       - lightrag_tucan_storage:/app/data/rag_storage
       - lightrag_tucan_inputs:/app/data/inputs
       - ./config.ini:/app/config.ini
       - ./.env:/app/.env
-    env_file:
-      - .env
-    environment:
-      - WORKSPACE=tucan
-      - PORT=9621
-    restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      - dokploy-network
+    depends_on:
+      redis: { condition: service_healthy }
+      qdrant: { condition: service_started }
 
-  # --- NUEVO SERVICIO: evolver-your-english ---
   lightrag-evolver-your-english:
-    container_name: lightrag-evolver-your-english
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: lightrag-local:latest
+    <<: *lightrag-default
+    container_name: workspace-evolver-your-english
+    environment:
+      - WORKSPACE=evolver-your-english
+      - PORT=9621
+    ports:
+      - "9626:9621"
     volumes:
       - lightrag_evolver_your_english_storage:/app/data/rag_storage
       - lightrag_evolver_your_english_inputs:/app/data/inputs
       - ./config.ini:/app/config.ini
       - ./.env:/app/.env
-    env_file:
-      - .env
-    environment:
-      - WORKSPACE=evolver-your-english
-      - PORT=9621
-    restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      - dokploy-network
+    depends_on:
+      redis: { condition: service_healthy }
+      qdrant: { condition: service_started }
 
-  # --- NUEVO SERVICIO: iditek ---
   lightrag-iditek:
-    container_name: lightrag-iditek
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: lightrag-local:latest
+    <<: *lightrag-default
+    container_name: workspace-iditek
+    environment:
+      - WORKSPACE=iditek
+      - PORT=9621
+    ports:
+      - "9627:9621"
     volumes:
       - lightrag_iditek_storage:/app/data/rag_storage
       - lightrag_iditek_inputs:/app/data/inputs
       - ./config.ini:/app/config.ini
       - ./.env:/app/.env
-    env_file:
-      - .env
-    environment:
-      - WORKSPACE=iditek
-      - PORT=9621
-    restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      - dokploy-network
+    depends_on:
+      redis: { condition: service_healthy }
+      qdrant: { condition: service_started }
 
 networks:
   dokploy-network:
-    external: true
+    name: dokploy-network
+    driver: bridge
+    # Si usas Dokploy y la red ya existe, cambia a: external: true
 
 volumes:
+  redis_data:
+    driver: local
+  qdrant_storage:
+    driver: local
+
   lightrag_ws1_storage:
     driver: local
   lightrag_ws1_inputs:
     driver: local
-
   lightrag_unireformada_storage:
     driver: local
   lightrag_unireformada_inputs:
     driver: local
-  
   lightrag_museo_storage:
     driver: local
   lightrag_museo_inputs:
     driver: local
-
   lightrag_barq_art_storage:
     driver: local
   lightrag_barq_art_inputs:
     driver: local
-
   lightrag_tucan_storage:
     driver: local
   lightrag_tucan_inputs:
     driver: local
-
-  # --- NUEVOS VOLUMENES ---
   lightrag_evolver_your_english_storage:
     driver: local
   lightrag_evolver_your_english_inputs:
     driver: local
-
   lightrag_iditek_storage:
     driver: local
   lightrag_iditek_inputs:
