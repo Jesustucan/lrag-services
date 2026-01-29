@@ -173,10 +173,10 @@ services:
   #     qdrant: { condition: service_started }
 
 networks:
+  # Red creada por Compose (evita conflicto con la etiqueta de dokploy-network en Dokploy)
   dokploy-network:
-    name: dokploy-network
+    name: lightrag-network
     driver: bridge
-    # Si usas Dokploy y la red ya existe, cambia a: external: true
 
 volumes:
   redis_data:
