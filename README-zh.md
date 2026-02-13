@@ -52,12 +52,22 @@
 ---
 
 <div align="center">
-  <a href="https://litewrite.ai" target="_blank">
-    <img src="./assets/LiteWrite.png" width="56" height="56" alt="LiteWrite" style="vertical-align: middle; border-radius: 12px;">
-    <span style="font-size: 18px; font-weight: bold; margin-left: 10px;">体验 LiteWrite — AI 原生 LaTeX 编辑平台</span>
-  </a>
-  <br>
-  <a href="https://litewrite.ai"><img src="https://img.shields.io/badge/🚀%20LiteWrite-AI%20原生%20LaTeX%20编辑器-ff6b6b?style=for-the-badge&logoColor=white&labelColor=1a1a2e"></a>
+  <table>
+    <tr>
+      <td style="vertical-align: middle;">
+        <img src="./assets/LiteWrite.png"
+             width="56"
+             height="56"
+             alt="LiteWrite"
+             style="border-radius: 12px;" />
+      </td>
+      <td style="vertical-align: middle; padding-left: 12px;">
+        <a href="https://litewrite.ai">
+          <img src="https://img.shields.io/badge/🚀%20LiteWrite-AI%20原生%20LaTeX%20编辑器-ff6b6b?style=for-the-badge&logoColor=white&labelColor=1a1a2e">
+        </a>
+      </td>
+    </tr>
+  </table>
 </div>
 
 ---
@@ -125,6 +135,8 @@ bun run build
 cd ..
 
 # 配置 env 文件
+# 从 GitHub 仓库的根目录上下载 env.example 文件
+# 或从本地检出的源代码中获取 env.example 文件
 cp env.example .env  # 使用你的LLM和Embedding模型访问参数更新.env文件
 # 启动API-WebUI服务
 lightrag-server
@@ -945,7 +957,7 @@ PGDocStatusStorage          Postgres
 MongoDocStatusStorage       MongoDB
 ```
 
-各存储类型的示例连接配置可在 `env.example` 文件中找到。连接字符串中的数据库实例需要您预先在数据库服务器上创建。LightRAG 仅负责在数据库实例中创建表，不负责创建数据库实例本身。如果使用 Redis 作为存储，请记住配置 Redis 的自动数据持久化规则，否则 Redis 服务重启后数据将会丢失。如果使用 PostgreSQL，建议使用 16.6 或更高版本。
+各存储类型的示例连接配置可在仓库中的 `env.example` 文件里找到。连接字符串中的数据库实例需要您预先在数据库服务器上创建。LightRAG 仅负责在数据库实例中创建表，不负责创建数据库实例本身。如果使用 Redis 作为存储，请记住配置 Redis 的自动数据持久化规则，否则 Redis 服务重启后数据将会丢失。如果使用 PostgreSQL，建议使用 16.6 或更高版本。
 
 <details>
 <summary> <b>使用 Neo4J 存储</b> </summary>
@@ -2063,7 +2075,6 @@ def extract_queries(file_path):
 </div>
 
 ---
-
 
 ## 📖 引用
 

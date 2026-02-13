@@ -52,12 +52,22 @@
 ---
 
 <div align="center">
-  <a href="https://litewrite.ai" target="_blank">
-    <img src="./assets/LiteWrite.png" width="56" height="56" alt="LiteWrite" style="vertical-align: middle; border-radius: 12px;">
-    <span style="font-size: 18px; font-weight: bold; margin-left: 10px;">Try LiteWrite — AI-Native LaTeX Editor Platform</span>
-  </a>
-  <br>
-  <a href="https://litewrite.ai"><img src="https://img.shields.io/badge/🚀%20LiteWrite-AI%20Native%20LaTeX%20Editor-ff6b6b?style=for-the-badge&logoColor=white&labelColor=1a1a2e"></a>
+  <table>
+    <tr>
+      <td style="vertical-align: middle;">
+        <img src="./assets/LiteWrite.png"
+             width="56"
+             height="56"
+             alt="LiteWrite"
+             style="border-radius: 12px;" />
+      </td>
+      <td style="vertical-align: middle; padding-left: 12px;">
+        <a href="https://litewrite.ai">
+          <img src="https://img.shields.io/badge/🚀%20LiteWrite-AI%20Native%20LaTeX%20Editor-ff6b6b?style=for-the-badge&logoColor=white&labelColor=1a1a2e">
+        </a>
+      </td>
+    </tr>
+  </table>
 </div>
 
 ---
@@ -124,7 +134,9 @@ bun install --frozen-lockfile
 bun run build
 cd ..
 
-# setup env file
+# Setup env file
+# Obtain the env.example file by downloading it from the GitHub repository root
+# or by copying it from a local source checkout.
 cp env.example .env  # Update the .env with your LLM and embedding configurations
 # Launch the server
 lightrag-server
@@ -945,7 +957,7 @@ PGDocStatusStorage          Postgres
 MongoDocStatusStorage       MongoDB
 ```
 
-Example connection configurations for each storage type can be found in the `env.example` file. The database instance in the connection string needs to be created by you on the database server beforehand. LightRAG is only responsible for creating tables within the database instance, not for creating the database instance itself. If using Redis as storage, remember to configure automatic data persistence rules for Redis, otherwise data will be lost after the Redis service restarts. If using PostgreSQL, it is recommended to use version 16.6 or above.
+Example connection configurations for each storage type can be found in the repository's `env.example` file. The database instance in the connection string needs to be created by you on the database server beforehand. LightRAG is only responsible for creating tables within the database instance, not for creating the database instance itself. If using Redis as storage, remember to configure automatic data persistence rules for Redis, otherwise data will be lost after the Redis service restarts. If using PostgreSQL, it is recommended to use version 16.6 or above.
 
 <details>
 <summary> <b>Using Neo4J Storage</b> </summary>
@@ -2063,7 +2075,6 @@ def extract_queries(file_path):
 </div>
 
 ---
-
 
 ## 📖 Citation
 
