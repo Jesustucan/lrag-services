@@ -7,6 +7,11 @@ x-lightrag-default: &lightrag-default
     - .env
   environment:
     - PORT=9621
+    # Override .env URLs to use Docker service names (not localhost)
+    - QDRANT_URL=http://qdrant:6333
+    - QDRANT_API_KEY=${QDRANT_API_KEY}
+    - REDIS_URI=redis://:${REDIS_PASSWORD}@redis:6379
+    - RERANK_BINDING_HOST=http://reranker:7997/rerank
   restart: unless-stopped
   extra_hosts:
     - "host.docker.internal:host-gateway"
@@ -16,9 +21,9 @@ x-lightrag-default: &lightrag-default
     resources:
       limits:
         cpus: '2'
-        memory: 2G
+        memory: 2.5G
       reservations:
-        cpus: '0.25'
+        cpus: '0.5'
         memory: 512M
 
 services:
@@ -61,11 +66,35 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1'
-          memory: 1G
+          cpus: '2'
+          memory: 1.5G
         reservations:
           cpus: '0.1'
           memory: 256M
+
+  reranker:
+    build:
+      context: .
+      dockerfile: Dockerfile.reranker
+    image: reranker-local:latest
+    container_name: reranker
+    networks:
+      - dokploy-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7997/health')"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '3'
+          memory: 2G
+        reservations:
+          cpus: '0.1'
+          memory: 768M
 
   lightrag-ws1:
     <<: *lightrag-default
@@ -73,6 +102,8 @@ services:
     environment:
       - WORKSPACE=staging
       - PORT=9621
+    ports:
+      - "9621:9621"
     volumes:
       - lightrag_ws1_storage:/app/data/rag_storage
       - lightrag_ws1_inputs:/app/data/inputs
@@ -81,6 +112,7 @@ services:
     depends_on:
       redis: { condition: service_healthy }
       qdrant: { condition: service_started }
+      reranker: { condition: service_healthy }
 
   # lightrag-unireformada:
   #   <<: *lightrag-default
@@ -95,7 +127,7 @@ services:
   #     - ./.env:/app/.env
   #   depends_on:
   #     redis: { condition: service_healthy }
-  #     qdrant: { condition: service_started }
+  #     qdrant: { condition: service_healthy }
 
   # lightrag-museo:
   #   <<: *lightrag-default
@@ -110,7 +142,7 @@ services:
   #     - ./.env:/app/.env
   #   depends_on:
   #     redis: { condition: service_healthy }
-  #     qdrant: { condition: service_started }
+  #     qdrant: { condition: service_healthy }
 
   # lightrag-barq-art:
   #   <<: *lightrag-default
@@ -125,7 +157,7 @@ services:
   #     - ./.env:/app/.env
   #   depends_on:
   #     redis: { condition: service_healthy }
-  #     qdrant: { condition: service_started }
+  #     qdrant: { condition: service_healthy }
 
   # lightrag-tucan:
   #   <<: *lightrag-default
@@ -140,7 +172,7 @@ services:
   #     - ./.env:/app/.env
   #   depends_on:
   #     redis: { condition: service_healthy }
-  #     qdrant: { condition: service_started }
+  #     qdrant: { condition: service_healthy }
 
   # lightrag-evolver-your-english:
   #   <<: *lightrag-default
@@ -155,7 +187,7 @@ services:
   #     - ./.env:/app/.env
   #   depends_on:
   #     redis: { condition: service_healthy }
-  #     qdrant: { condition: service_started }
+  #     qdrant: { condition: service_healthy }
 
   # lightrag-iditek:
   #   <<: *lightrag-default
@@ -170,7 +202,7 @@ services:
   #     - ./.env:/app/.env
   #   depends_on:
   #     redis: { condition: service_healthy }
-  #     qdrant: { condition: service_started }
+  #     qdrant: { condition: service_healthy }
 
 networks:
   # Red creada por Compose (evita conflicto con la etiqueta de dokploy-network en Dokploy)

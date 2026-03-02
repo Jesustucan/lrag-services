@@ -1,0 +1,16 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install CPU-only PyTorch first to avoid the CUDA version (~800MB vs ~2.5GB)
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+RUN pip install --no-cache-dir fastapi "uvicorn[standard]" sentence-transformers
+
+# Pre-download model during build so the container starts instantly
+# bge-reranker-v2-m3: multilingual, 8192 token limit — covers full 1200-token chunks
+RUN python -c "from sentence_transformers import CrossEncoder; CrossEncoder('BAAI/bge-reranker-v2-m3', device='cpu', max_length=1024); print('Model downloaded OK')"
+
+COPY reranker_server.py .
+
+CMD ["uvicorn", "reranker_server:app", "--host", "0.0.0.0", "--port", "7997"]
