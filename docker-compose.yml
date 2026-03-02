@@ -96,11 +96,11 @@ services:
           cpus: '0.1'
           memory: 768M
 
-  lightrag-ws1:
+  lightrag-workspace-staging:
     <<: *lightrag-default
     container_name: workspace-staging
     environment:
-      - WORKSPACE=staging
+      - WORKSPACE=workspace-staging
       - PORT=9621
     ports:
       - "9621:9621"
@@ -114,98 +114,75 @@ services:
       qdrant: { condition: service_started }
       reranker: { condition: service_healthy }
 
-  # lightrag-unireformada:
-  #   <<: *lightrag-default
-  #   container_name: workspace-unireformada
-  #   environment:
-  #     - WORKSPACE=unireformada
-  #     - PORT=9621
-  #   volumes:
-  #     - lightrag_unireformada_storage:/app/data/rag_storage
-  #     - lightrag_unireformada_inputs:/app/data/inputs
-  #     - ./config.ini:/app/config.ini
-  #     - ./.env:/app/.env
-  #   depends_on:
-  #     redis: { condition: service_healthy }
-  #     qdrant: { condition: service_healthy }
+  lightrag-workspace-01:
+    <<: *lightrag-default
+    container_name: workspace-01
+    environment:
+      - WORKSPACE=workspace-01
+      - PORT=9622
+    ports:
+      - "9622:9621"
+    volumes:
+      - lightrag_workspace_01_storage:/app/data/rag_storage
+      - lightrag_workspace_01_inputs:/app/data/inputs
+      - ./config.ini:/app/config.ini
+      - ./.env:/app/.env
+    depends_on:
+      redis: { condition: service_healthy }
+      qdrant: { condition: service_started }
 
-  # lightrag-museo:
-  #   <<: *lightrag-default
-  #   container_name: workspace-museo
-  #   environment:
-  #     - WORKSPACE=museo
-  #     - PORT=9621
-  #   volumes:
-  #     - lightrag_museo_storage:/app/data/rag_storage
-  #     - lightrag_museo_inputs:/app/data/inputs
-  #     - ./config.ini:/app/config.ini
-  #     - ./.env:/app/.env
-  #   depends_on:
-  #     redis: { condition: service_healthy }
-  #     qdrant: { condition: service_healthy }
+  lightrag-workspace-02:
+    <<: *lightrag-default
+    container_name: workspace-02
+    environment:
+      - WORKSPACE=workspace-02
+      - PORT=9623
+    ports:
+      - "9623:9621"
+    volumes:
+      - lightrag_workspace_02_storage:/app/data/rag_storage
+      - lightrag_workspace_02_inputs:/app/data/inputs
+      - ./config.ini:/app/config.ini
+      - ./.env:/app/.env
+    depends_on:
+      redis: { condition: service_healthy }
+      qdrant: { condition: service_started }
 
-  # lightrag-barq-art:
-  #   <<: *lightrag-default
-  #   container_name: workspace-barq-art
-  #   environment:
-  #     - WORKSPACE=barq-art
-  #     - PORT=9621
-  #   volumes:
-  #     - lightrag_barq_art_storage:/app/data/rag_storage
-  #     - lightrag_barq_art_inputs:/app/data/inputs
-  #     - ./config.ini:/app/config.ini
-  #     - ./.env:/app/.env
-  #   depends_on:
-  #     redis: { condition: service_healthy }
-  #     qdrant: { condition: service_healthy }
+  lightrag-workspace-03:
+    <<: *lightrag-default
+    container_name: workspace-03
+    environment:
+      - WORKSPACE=workspace-03
+      - PORT=9624
+    ports:
+      - "9624:9621"
+    volumes:
+      - lightrag_workspace_03_storage:/app/data/rag_storage
+      - lightrag_workspace_03_inputs:/app/data/inputs
+      - ./config.ini:/app/config.ini
+      - ./.env:/app/.env
+    depends_on:
+      redis: { condition: service_healthy }
+      qdrant: { condition: service_started }
 
-  # lightrag-tucan:
-  #   <<: *lightrag-default
-  #   container_name: workspace-tucan
-  #   environment:
-  #     - WORKSPACE=tucan
-  #     - PORT=9621
-  #   volumes:
-  #     - lightrag_tucan_storage:/app/data/rag_storage
-  #     - lightrag_tucan_inputs:/app/data/inputs
-  #     - ./config.ini:/app/config.ini
-  #     - ./.env:/app/.env
-  #   depends_on:
-  #     redis: { condition: service_healthy }
-  #     qdrant: { condition: service_healthy }
-
-  # lightrag-evolver-your-english:
-  #   <<: *lightrag-default
-  #   container_name: workspace-evolver-your-english
-  #   environment:
-  #     - WORKSPACE=evolver-your-english
-  #     - PORT=9621
-  #   volumes:
-  #     - lightrag_evolver_your_english_storage:/app/data/rag_storage
-  #     - lightrag_evolver_your_english_inputs:/app/data/inputs
-  #     - ./config.ini:/app/config.ini
-  #     - ./.env:/app/.env
-  #   depends_on:
-  #     redis: { condition: service_healthy }
-  #     qdrant: { condition: service_healthy }
-
-  # lightrag-iditek:
-  #   <<: *lightrag-default
-  #   container_name: workspace-iditek
-  #   environment:
-  #     - WORKSPACE=iditek
-  #     - PORT=9621
-  #   volumes:
-  #     - lightrag_iditek_storage:/app/data/rag_storage
-  #     - lightrag_iditek_inputs:/app/data/inputs
-  #     - ./config.ini:/app/config.ini
-  #     - ./.env:/app/.env
-  #   depends_on:
-  #     redis: { condition: service_healthy }
-  #     qdrant: { condition: service_healthy }
-
+  lightrag-workspace-04:
+    <<: *lightrag-default
+    container_name: workspace-04
+    environment:
+      - WORKSPACE=workspace-04
+      - PORT=9625
+    ports:
+      - "9625:9621"
+    volumes:
+      - lightrag_workspace_04_storage:/app/data/rag_storage
+      - lightrag_workspace_04_inputs:/app/data/inputs
+      - ./config.ini:/app/config.ini
+      - ./.env:/app/.env
+    depends_on:
+      redis: { condition: service_healthy }
+      qdrant: { condition: service_started }
+      
 networks:
-  # Red creada por Compose (evita conflicto con la etiqueta de dokploy-network en Dokploy)
   dokploy-network:
     name: lightrag-network
     driver: bridge
@@ -220,27 +197,23 @@ volumes:
     driver: local
   lightrag_ws1_inputs:
     driver: local
-  # lightrag_unireformada_storage:
-  #   driver: local
-  # lightrag_unireformada_inputs:
-  #   driver: local
-  # lightrag_museo_storage:
-  #   driver: local
-  # lightrag_museo_inputs:
-  #   driver: local
-  # lightrag_barq_art_storage:
-  #   driver: local
-  # lightrag_barq_art_inputs:
-  #   driver: local
-  # lightrag_tucan_storage:
-  #   driver: local
-  # lightrag_tucan_inputs:
-  #   driver: local
-  # lightrag_evolver_your_english_storage:
-  #   driver: local
-  # lightrag_evolver_your_english_inputs:
-  #   driver: local
-  # lightrag_iditek_storage:
-  #   driver: local
-  # lightrag_iditek_inputs:
-  #   driver: local
+
+  lightrag_workspace_01_storage:
+    driver: local
+  lightrag_workspace_01_inputs:
+    driver: local
+
+  lightrag_workspace_02_storage:
+    driver: local
+  lightrag_workspace_02_inputs:
+    driver: local
+
+  lightrag_workspace_03_storage:
+    driver: local
+  lightrag_workspace_03_inputs:
+    driver: local
+    
+  lightrag_workspace_04_storage:
+    driver: local
+  lightrag_workspace_04_inputs:
+    driver: local
