@@ -102,8 +102,6 @@ services:
     environment:
       - WORKSPACE=workspace-staging
       - PORT=9621
-    ports:
-      - "9621:9621"
     volumes:
       - lightrag_ws1_storage:/app/data/rag_storage
       - lightrag_ws1_inputs:/app/data/inputs
@@ -120,8 +118,6 @@ services:
     environment:
       - WORKSPACE=workspace-01
       - PORT=9622
-    ports:
-      - "9622:9621"
     volumes:
       - lightrag_workspace_01_storage:/app/data/rag_storage
       - lightrag_workspace_01_inputs:/app/data/inputs
@@ -137,8 +133,6 @@ services:
     environment:
       - WORKSPACE=workspace-02
       - PORT=9623
-    ports:
-      - "9623:9621"
     volumes:
       - lightrag_workspace_02_storage:/app/data/rag_storage
       - lightrag_workspace_02_inputs:/app/data/inputs
@@ -154,8 +148,6 @@ services:
     environment:
       - WORKSPACE=workspace-03
       - PORT=9624
-    ports:
-      - "9624:9621"
     volumes:
       - lightrag_workspace_03_storage:/app/data/rag_storage
       - lightrag_workspace_03_inputs:/app/data/inputs
@@ -171,8 +163,6 @@ services:
     environment:
       - WORKSPACE=workspace-04
       - PORT=9625
-    ports:
-      - "9625:9621"
     volumes:
       - lightrag_workspace_04_storage:/app/data/rag_storage
       - lightrag_workspace_04_inputs:/app/data/inputs
