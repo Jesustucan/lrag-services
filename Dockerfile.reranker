@@ -1,15 +1,21 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install CPU-only PyTorch first to avoid the CUDA version (~800MB vs ~2.5GB)
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1 
+# Set HF cache to a temporary location so it's not baked into image
+ENV HF_HOME=/tmp/hf_cache
 
-RUN pip install --no-cache-dir fastapi "uvicorn[standard]" sentence-transformers
-
-# Pre-download model during build so the container starts instantly
-# bge-reranker-v2-m3: multilingual, 8192 token limit — covers full 1200-token chunks
-RUN python -c "from sentence_transformers import CrossEncoder; CrossEncoder('BAAI/bge-reranker-v2-m3', device='cpu', max_length=1024); print('Model downloaded OK')"
+# Install CPU-only PyTorch and dependencies
+# Use mount cache to download model but NOT include it in final image
+RUN --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=cache,target=/tmp/hf_cache \
+    pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
+    && pip install --no-cache-dir fastapi "uvicorn[standard]" sentence-transformers \
+    && python -c "from sentence_transformers import CrossEncoder; CrossEncoder('BAAI/bge-reranker-v2-m3', device='cpu', max_length=1024); print('Model downloaded OK')" \
+    && find /usr/local/lib/python*/site-packages -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true \
+    && find /usr/local/lib/python*/site-packages -type f -name "*.pyc" -delete
 
 COPY reranker_server.py .
 

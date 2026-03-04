@@ -19,16 +19,16 @@ FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV UV_SYSTEM_PYTHON=1
-ENV UV_COMPILE_BYTECODE=1
+ENV UV_COMPILE_BYTECODE=0
 
 WORKDIR /app
 
 # Install system deps (Rust is required by some wheels)
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        curl \
-        build-essential \
-        pkg-config \
+    curl \
+    build-essential \
+    pkg-config \
     && rm -rf /var/lib/apt/lists/* \
     && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
@@ -72,6 +72,8 @@ WORKDIR /app
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 ENV UV_SYSTEM_PYTHON=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
 # Copy installed packages and application code
 COPY --from=builder /root/.local /root/.local
@@ -88,7 +90,11 @@ ENV PATH=/app/.venv/bin:/root/.local/bin:$PATH
 # And ensure pip is available for runtime installs
 RUN --mount=type=cache,target=/root/.local/share/uv \
     uv sync --frozen --no-dev --extra api --extra offline --no-editable \
-    && /app/.venv/bin/python -m ensurepip --upgrade
+    && /app/.venv/bin/python -m ensurepip --upgrade \
+    && find /app/.venv -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true \
+    && find /app/.venv -type f -name "*.pyc" -delete \
+    && find /app/.venv -type f -name "*.pyo" -delete \
+    && pip cache purge
 
 # Create persistent data directories AFTER package installation
 RUN mkdir -p /app/data/rag_storage /app/data/inputs /app/data/tiktoken
