@@ -35,14 +35,12 @@ services:
     image: redis:7-alpine
     container_name: lightrag-redis
     command: >
-      sh -c '
-        redis-server
-        --requirepass "$${REDIS_PASSWORD}"
-        --appendonly yes
-        --appendfsync everysec
-        --maxmemory 200mb
-        --maxmemory-policy allkeys-lru
-      '
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 200mb
+      --maxmemory-policy allkeys-lru
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
     volumes:
