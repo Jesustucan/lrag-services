@@ -1,26 +1,288 @@
+# =============================================================================
+# Docker Compose — Desarrollo Local
+# =============================================================================
+# Stack completo: Redis + Qdrant + vLLM Reranker + 5 Workspaces LightRAG
+#
+# Uso:
+#   docker compose up -d          # Levantar todo
+#   docker compose logs -f        # Ver logs
+#   docker compose down -v        # Bajar y borrar volúmenes
+#
+# Workspaces accesibles localmente:
+#   http://localhost:9621  → staging
+#   http://localhost:9622  → workspace-01
+#   http://localhost:9623  → workspace-02
+#   http://localhost:9624  → workspace-03
+#   http://localhost:9625  → workspace-04
+#
+# NOTA: El reranker usa vLLM CPU. Primera vez descarga el modelo (~2GB).
+# =============================================================================
+
+x-lightrag-default: &lightrag-default
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: lightrag-local:latest
+  env_file:
+    - .env
+  environment:
+    # Override .env URLs para usar service names internos
+    - QDRANT_URL=http://qdrant:6333
+    - QDRANT_API_KEY=${QDRANT_API_KEY}
+    - REDIS_URI=redis://:${REDIS_PASSWORD}@redis:6379
+    - RERANK_BINDING_HOST=http://reranker:8000/v1/rerank
+    - HOST=0.0.0.0
+  restart: unless-stopped
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  networks:
+    - lightrag-network
+  deploy:
+    resources:
+      limits:
+        cpus: '2'
+        memory: 2.5G
+      reservations:
+        cpus: '0.5'
+        memory: 512M
+
 services:
-  lightrag:
-    image: ghcr.io/hkuds/lightrag:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
-      tags:
-        - ghcr.io/hkuds/lightrag:latest
-    ports:
-      - "${HOST:-0.0.0.0}:${PORT:-9621}:9621"
+  # ---------------------------------------------------------------------------
+  # Redis
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    command: sh -c 'redis-server --requirepass "$$REDIS_PASSWORD"'
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
     volumes:
-      - ./data/rag_storage:/app/data/rag_storage
-      - ./data/inputs:/app/data/inputs
+      - redis_data:/data
+    networks:
+      - lightrag-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+  # ---------------------------------------------------------------------------
+  # Qdrant
+  # ---------------------------------------------------------------------------
+  qdrant:
+    image: qdrant/qdrant:v1.15.1
+    container_name: qdrant
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY}
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    networks:
+      - lightrag-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333'"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1.5G
+        reservations:
+          cpus: '0.1'
+          memory: 256M
+
+  # ---------------------------------------------------------------------------
+  # vLLM Reranker (CPU)
+  # ---------------------------------------------------------------------------
+  # Usa vllm/vllm-openai-cpu para correr BAAI/bge-reranker-v2-m3 localmente.
+  # Primera vez descarga ~2GB de modelo. Requiere 4GB+ RAM para correr.
+  # ---------------------------------------------------------------------------
+  reranker:
+    image: vllm/vllm-openai-cpu:latest
+    container_name: reranker
+    command: >
+      --model ${VLLM_RERANK_MODEL:-BAAI/bge-reranker-v2-m3}
+      --port 8000
+      --dtype float32
+      --max-model-len 512
+      --gpu-memory-utilization 0.4
+      --enforce-eager
+    environment:
+      - VLLM_LOGGING_LEVEL=warning
+    volumes:
+      - vllm_rerank_cache:/root/.cache/huggingface
+    networks:
+      - lightrag-network
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'PORT_HEX="$(printf ''%04X'' 8000)"; cat /proc/net/tcp /proc/net/tcp6 2>/dev/null | grep -q ":$${PORT_HEX} "'
+      interval: 5s
+      timeout: 3s
+      retries: 120
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 6G
+        reservations:
+          cpus: '1'
+          memory: 4G
+
+  # ---------------------------------------------------------------------------
+  # LightRAG Workspace: Staging
+  # ---------------------------------------------------------------------------
+  lightrag-workspace-staging:
+    <<: *lightrag-default
+    container_name: workspace-staging
+    environment:
+      - WORKSPACE=workspace-staging
+      - PORT=9621
+    volumes:
+      - lightrag_ws1_storage:/app/data/rag_storage
+      - lightrag_ws1_inputs:/app/data/inputs
       - ./config.ini:/app/config.ini
       - ./.env:/app/.env
-    deploy:
-      restart_policy:
-        condition: on-failure
-        max_attempts: 10
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    ports:
+      - "9621:9621"
+    depends_on:
+      redis: { condition: service_healthy }
+      qdrant: { condition: service_healthy }
+      reranker: { condition: service_healthy }
+
+  # ---------------------------------------------------------------------------
+  # LightRAG Workspace: 01
+  # ---------------------------------------------------------------------------
+  lightrag-workspace-01:
+    <<: *lightrag-default
+    container_name: workspace-01
     environment:
-      WORKING_DIR: "/app/data/rag_storage"
-      INPUT_DIR: "/app/data/inputs"
-      HOST: "0.0.0.0"
-      PORT: "9621"
+      - WORKSPACE=workspace-01
+      - PORT=9622
+    volumes:
+      - lightrag_workspace_01_storage:/app/data/rag_storage
+      - lightrag_workspace_01_inputs:/app/data/inputs
+      - ./config.ini:/app/config.ini
+      - ./.env:/app/.env
+    ports:
+      - "9622:9622"
+    depends_on:
+      redis: { condition: service_healthy }
+      qdrant: { condition: service_healthy }
+      reranker: { condition: service_healthy }
+
+  # ---------------------------------------------------------------------------
+  # LightRAG Workspace: 02
+  # ---------------------------------------------------------------------------
+  lightrag-workspace-02:
+    <<: *lightrag-default
+    container_name: workspace-02
+    environment:
+      - WORKSPACE=workspace-02
+      - PORT=9623
+    volumes:
+      - lightrag_workspace_02_storage:/app/data/rag_storage
+      - lightrag_workspace_02_inputs:/app/data/inputs
+      - ./config.ini:/app/config.ini
+      - ./.env:/app/.env
+    ports:
+      - "9623:9623"
+    depends_on:
+      redis: { condition: service_healthy }
+      qdrant: { condition: service_healthy }
+      reranker: { condition: service_healthy }
+
+  # ---------------------------------------------------------------------------
+  # LightRAG Workspace: 03
+  # ---------------------------------------------------------------------------
+  lightrag-workspace-03:
+    <<: *lightrag-default
+    container_name: workspace-03
+    environment:
+      - WORKSPACE=workspace-03
+      - PORT=9624
+    volumes:
+      - lightrag_workspace_03_storage:/app/data/rag_storage
+      - lightrag_workspace_03_inputs:/app/data/inputs
+      - ./config.ini:/app/config.ini
+      - ./.env:/app/.env
+    ports:
+      - "9624:9624"
+    depends_on:
+      redis: { condition: service_healthy }
+      qdrant: { condition: service_healthy }
+      reranker: { condition: service_healthy }
+
+  # ---------------------------------------------------------------------------
+  # LightRAG Workspace: 04
+  # ---------------------------------------------------------------------------
+  lightrag-workspace-04:
+    <<: *lightrag-default
+    container_name: workspace-04
+    environment:
+      - WORKSPACE=workspace-04
+      - PORT=9625
+    volumes:
+      - lightrag_workspace_04_storage:/app/data/rag_storage
+      - lightrag_workspace_04_inputs:/app/data/inputs
+      - ./config.ini:/app/config.ini
+      - ./.env:/app/.env
+    ports:
+      - "9625:9625"
+    depends_on:
+      redis: { condition: service_healthy }
+      qdrant: { condition: service_healthy }
+      reranker: { condition: service_healthy }
+
+networks:
+  lightrag-network:
+    name: lightrag-network
+    driver: bridge
+
+volumes:
+  redis_data:
+    driver: local
+  qdrant_storage:
+    driver: local
+  vllm_rerank_cache:
+    driver: local
+
+  lightrag_ws1_storage:
+    driver: local
+  lightrag_ws1_inputs:
+    driver: local
+
+  lightrag_workspace_01_storage:
+    driver: local
+  lightrag_workspace_01_inputs:
+    driver: local
+
+  lightrag_workspace_02_storage:
+    driver: local
+  lightrag_workspace_02_inputs:
+    driver: local
+
+  lightrag_workspace_03_storage:
+    driver: local
+  lightrag_workspace_03_inputs:
+    driver: local
+
+  lightrag_workspace_04_storage:
+    driver: local
+  lightrag_workspace_04_inputs:
+    driver: local

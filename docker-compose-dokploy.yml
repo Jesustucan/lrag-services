@@ -1,0 +1,204 @@
+# Base compartida para todos los workspaces
+x-lightrag-default: &lightrag-default
+  image: ghcr.io/hkuds/lightrag:latest
+  env_file:
+    - .env
+  restart: unless-stopped
+  networks:
+    - lightrag-network
+    - dokploy-network
+  deploy:
+    resources:
+      limits:
+        cpus: '1.5'
+        memory: 1.5G
+      reservations:
+        cpus: '0.25'
+        memory: 512M
+
+# Variables de entorno como MAP — evita el bug de YAML merge que pierde vars
+x-lightrag-env: &lightrag-env
+  QDRANT_URL: "http://qdrant:6333"
+  QDRANT_API_KEY: "${QDRANT_API_KEY}"
+  REDIS_URI: "redis://:${REDIS_PASSWORD}@redis:6379"
+  RERANK_BINDING: "null"
+  HOST: "0.0.0.0"
+  WORKING_DIR: "/app/data/rag_storage"
+  INPUT_DIR: "/app/data/inputs"
+  LIGHTRAG_API_KEY: "${LIGHTRAG_API_KEY}"
+
+services:
+  # ---------------------------------------------------------------------------
+  # Redis — Cache & Session Store
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: lightrag-redis
+    command: >
+      sh -c '
+        redis-server
+        --requirepass "$${REDIS_PASSWORD}"
+        --appendonly yes
+        --appendfsync everysec
+        --maxmemory 200mb
+        --maxmemory-policy allkeys-lru
+      '
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    networks:
+      - lightrag-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+
+  # ---------------------------------------------------------------------------
+  # Qdrant — Vector Database
+  # ---------------------------------------------------------------------------
+  qdrant:
+    image: qdrant/qdrant:v1.15.1
+    container_name: lightrag-qdrant
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY}
+      QDRANT__STORAGE__STORAGE_PATH: /qdrant/storage
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    networks:
+      - lightrag-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1.5G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # ---------------------------------------------------------------------------
+  # LightRAG Workspace: Staging
+  # ---------------------------------------------------------------------------
+  lightrag-staging:
+    <<: *lightrag-default
+    container_name: lightrag-staging
+    environment:
+      <<: *lightrag-env
+      WORKSPACE: "staging"
+      PORT: "9621"
+    volumes:
+      - staging_storage:/app/data/rag_storage
+      - staging_inputs:/app/data/inputs
+    depends_on:
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:9621/')\" || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ---------------------------------------------------------------------------
+  # LightRAG Workspace: 01
+  # ---------------------------------------------------------------------------
+  lightrag-workspace-01:
+    <<: *lightrag-default
+    container_name: lightrag-workspace-01
+    environment:
+      <<: *lightrag-env
+      WORKSPACE: "workspace-01"
+      PORT: "9622"
+    volumes:
+      - workspace_01_storage:/app/data/rag_storage
+      - workspace_01_inputs:/app/data/inputs
+    depends_on:
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:9622/')\" || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ---------------------------------------------------------------------------
+  # LightRAG Workspace: 02
+  # ---------------------------------------------------------------------------
+  lightrag-workspace-02:
+    <<: *lightrag-default
+    container_name: lightrag-workspace-02
+    environment:
+      <<: *lightrag-env
+      WORKSPACE: "workspace-02"
+      PORT: "9623"
+    volumes:
+      - workspace_02_storage:/app/data/rag_storage
+      - workspace_02_inputs:/app/data/inputs
+    depends_on:
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:9623/')\" || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  lightrag-network:
+    name: lightrag-network
+    driver: bridge
+  dokploy-network:
+    external: true
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  redis_data:
+    driver: local
+  qdrant_storage:
+    driver: local
+
+  staging_storage:
+    driver: local
+  staging_inputs:
+    driver: local
+
+  workspace_01_storage:
+    driver: local
+  workspace_01_inputs:
+    driver: local
+
+  workspace_02_storage:
+    driver: local
+  workspace_02_inputs:
+    driver: local
